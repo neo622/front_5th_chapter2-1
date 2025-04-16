@@ -1,3 +1,11 @@
+const PRODUCT_LIST = [
+  { id: 'p1', name: '상품1', price: 10000, quantity: 50 },
+  { id: 'p2', name: '상품2', price: 20000, quantity: 30 },
+  { id: 'p3', name: '상품3', price: 30000, quantity: 20 },
+  { id: 'p4', name: '상품4', price: 15000, quantity: 0 },
+  { id: 'p5', name: '상품5', price: 25000, quantity: 10 },
+];
+
 const DISCOUNT_RATE = {
   p1: 0.1,
   p2: 0.15,
@@ -33,6 +41,26 @@ let lastSelectedProductId;
 let bonusPoints = 0;
 let totalAmount = 0;
 let totalItemCount = 0;
+
+// 유틸함수
+function findProductById(productId) {
+  return productList.find((product) => product.id === productId);
+}
+
+function extractQuantityFromText(text) {
+  return parseInt(text.split(QYT_SEPARATOR)[1]);
+}
+
+function replaceQuantityInText(text, newQuantity) {
+  const baseText = text.split(QYT_SEPARATOR)[0];
+  return `${baseText}${QYT_SEPARATOR}${newQuantity}`;
+}
+
+function createElementWithClass(tag, className) {
+  const el = document.createElement(tag);
+  el.className = className;
+  return el;
+}
 
 function main() {
   // 상품 데이터 초기화
@@ -138,7 +166,7 @@ function updateProductSelectOptions() {
   });
 }
 
-// 장바구니 총합 계산
+// 장바구니 총합 계산 (Refactoring)
 function calculateCart() {
   totalAmount = 0;
   totalItemCount = 0;
@@ -146,51 +174,36 @@ function calculateCart() {
   let subTotal = 0;
 
   for (let i = 0; i < $cartItems.length; i++) {
-    (function () {
-      let currentProduct = null;
+    const $item = $cartItems[i];
+    const currentItem = findProductById($item.id);
+    const quantity = extractQuantityFromText($item.querySelector('span').textContent);
+    const itemTotal = currentItem.price * quantity;
 
-      for (let j = 0; j < productList.length; j++) {
-        if (productList[j].id === $cartItems[i].id) {
-          currentProduct = productList[j];
-          break;
-        }
-      }
+    let discountRate = 0;
+    totalItemCount += quantity;
+    subTotal += itemTotal;
 
-      const quantity = parseInt(
-        $cartItems[i].querySelector('span').textContent.split(QYT_SEPARATOR)[1]
-      );
-      const itemTotal = currentProduct.price * quantity;
-      let discountRate = 0;
+    if (quantity >= MIN_DISCOUNT_QTY) {
+      discountRate = DISCOUNT_RATE[currentItem.id] || 0;
+    }
 
-      totalItemCount += quantity;
-      subTotal += itemTotal;
-
-      if (quantity >= MIN_DISCOUNT_QTY) {
-        discountRate = DISCOUNT_RATE[currentProduct.id] || 0;
-      }
-
-      totalAmount += itemTotal * (1 - discountRate);
-    })();
+    totalAmount += itemTotal * (1 - discountRate);
   }
 
-  // 대량 구매 할인
-  let finalDiscountRate = 0;
+  // 대량 구매 할인 (Refactoring)
+  let finalDiscountRate = (subTotal - totalAmount) / subTotal || 0;
+
   if (totalItemCount >= BULK_DISCOUNT_QTY) {
-    const bulkDiscount = totalAmount * BULK_DISCOUNT_RATE;
-    const itemDiscount = subTotal - totalAmount;
-    if (bulkDiscount > itemDiscount) {
-      totalAmount = subTotal * 0.75;
-      finalDiscountRate = 0.25;
-    } else {
-      finalDiscountRate = itemDiscount / subTotal;
+    const bulkDiscount = subTotal * BULK_DISCOUNT_RATE;
+    if (bulkDiscount > subTotal - totalAmount) {
+      totalAmount = subTotal * (1 - BULK_DISCOUNT_RATE);
+      finalDiscountRate = BULK_DISCOUNT_RATE;
     }
-  } else {
-    finalDiscountRate = (subTotal - totalAmount) / subTotal;
   }
 
   // 화요일 추가 할인
   if (new Date().getDay() === 2) {
-    totalAmount *= 0.9;
+    totalAmount *= 1 - TUESDAY_SALE_RATE;
     finalDiscountRate = Math.max(finalDiscountRate, TUESDAY_SALE_RATE);
   }
 
@@ -198,8 +211,7 @@ function calculateCart() {
   $totalDisplay.textContent = `총액: ${Math.round(totalAmount)}원`;
 
   if (finalDiscountRate > 0) {
-    const $discountTag = document.createElement('span');
-    $discountTag.className = 'text-green-500 ml-2';
+    const $discountTag = createElementWithClass('span', 'text-green-500 ml-2');
     $discountTag.textContent = `(${(finalDiscountRate * 100).toFixed(1)}% 할인 적용)`;
     $totalDisplay.appendChild($discountTag);
   }
@@ -213,9 +225,8 @@ function renderBonusPoints() {
   bonusPoints = Math.floor(totalAmount / 1000);
   let $pointsTag = document.getElementById('loyalty-points');
   if (!$pointsTag) {
-    $pointsTag = document.createElement('span');
+    $pointsTag = createElementWithClass('span', 'text-blue-500 ml-2');
     $pointsTag.id = 'loyalty-points';
-    $pointsTag.className = 'text-blue-500 ml-2';
     $totalDisplay.appendChild($pointsTag);
   }
   $pointsTag.textContent = `(포인트: ${bonusPoints})`;
@@ -226,9 +237,8 @@ function updateStockStatus() {
   let infoText = '';
   productList.forEach((product) => {
     if (product.quantity < 5) {
-      infoText += `${product.name}: ${
-        product.quantity > 0 ? `재고 부족 (${product.quantity}개 남음)` : '품절'
-      }\n`;
+      infoText += `${product.name}: ${product.quantity > 0 ? `재고 부족 (${product.quantity}개 남음)` : '품절'
+        }\n`;
     }
   });
   $stockStatusDisplay.textContent = infoText;
@@ -239,30 +249,24 @@ main();
 // 상품 추가 버튼 이벤트
 $addToCartBtn.addEventListener('click', () => {
   const selectedProductId = $productSelect.value;
-  const selectedProduct = productList.find(
-    (product) => product.id === selectedProductId
-  );
+  const selectedProduct = findProductById(selectedProductId);
 
   if (selectedProduct && selectedProduct.quantity > 0) {
     const $existingItem = document.getElementById(selectedProduct.id);
     if ($existingItem) {
-      const newQuantity =
-        parseInt(
-          $existingItem
-            .querySelector('span')
-            .textContent.split(QYT_SEPARATOR)[1]
-        ) + 1;
+      const $textSpan = $existingItem.querySelector('span');
+      const currentQuantity = extractQuantityFromText($textSpan.textContent);
+      const newQuantity = currentQuantity + 1;
+
       if (newQuantity <= selectedProduct.quantity) {
-        $existingItem.querySelector('span').textContent =
-          `${selectedProduct.name} - ${selectedProduct.price}원 x ${newQuantity}`;
+        $textSpan.textContent = replaceQuantityInText($textSpan.textContent, newQuantity);
         selectedProduct.quantity--;
       } else {
         alert('재고가 부족합니다.');
       }
     } else {
-      const $newItem = document.createElement('div');
+      const $newItem = createElementWithClass('div', 'flex justify-between items-center mb-2');
       $newItem.id = selectedProduct.id;
-      $newItem.className = 'flex justify-between items-center mb-2';
       $newItem.innerHTML = `<span>${selectedProduct.name} - ${selectedProduct.price}원 x 1</span>
         <div>
           <button class="quantity-change bg-blue-500 text-white px-2 py-1 rounded mr-1" data-product-id="${selectedProduct.id}" data-change="-1">-</button>
@@ -287,22 +291,16 @@ $cartContainer.addEventListener('click', (event) => {
   ) {
     const productId = $target.dataset.productId;
     const $itemElement = document.getElementById(productId);
-    const product = productList.find((p) => p.id === productId);
+    const product = findProductById(productId);
+    const $textSpan = $itemElement.querySelector('span');
+    const currentQty = extractQuantityFromText($textSpan.textContent);
 
     if ($target.classList.contains('quantity-change')) {
       const changeAmount = parseInt($target.dataset.change);
-      const currentQty = parseInt(
-        $itemElement.querySelector('span').textContent.split(QYT_SEPARATOR)[1]
-      );
       const newQty = currentQty + changeAmount;
 
       if (newQty > 0 && newQty <= product.quantity + currentQty) {
-        $itemElement.querySelector('span').textContent =
-          $itemElement
-            .querySelector('span')
-            .textContent.split(QYT_SEPARATOR)[0] +
-          QYT_SEPARATOR +
-          newQty;
+        $textSpan.textContent = replaceQuantityInText($textSpan.textContent, newQty);
         product.quantity -= changeAmount;
       } else if (newQty <= 0) {
         $itemElement.remove();
@@ -311,10 +309,7 @@ $cartContainer.addEventListener('click', (event) => {
         alert('재고가 부족합니다.');
       }
     } else if ($target.classList.contains('remove-item')) {
-      const removedQty = parseInt(
-        $itemElement.querySelector('span').textContent.split(QYT_SEPARATOR)[1]
-      );
-      product.quantity += removedQty;
+      product.quantity += currentQty;
       $itemElement.remove();
     }
 
