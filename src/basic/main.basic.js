@@ -104,6 +104,7 @@ function main() {
       </div>
     </div>
   `
+  // 전역적으로 쓰이는 요소는 $dom객체에 저장해서 전역적으로 관리
   $dom.$cartContainer = document.getElementById('cart-items');
   $dom.$totalDisplay = document.getElementById('cart-total');
   $dom.$productSelect = document.getElementById('product-select');
